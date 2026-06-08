@@ -1,0 +1,6 @@
+.env
+venv311/
+venv/
+__pycache__/
+*.pkl
+xlm_temp/

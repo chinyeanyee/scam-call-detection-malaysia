@@ -1,0 +1,46 @@
+# Core data
+pandas
+numpy
+scikit-learn
+
+# NLP
+transformers==4.44.2
+datasets
+evaluate
+accelerate
+shap
+
+# Malay stopwords
+malaya
+stopwordsiso
+nltk
+
+# Visualization
+matplotlib
+seaborn
+wordcloud
+
+# Model saving
+joblib
+
+# OpenAI (for synthetic data generation)
+openai
+
+# API backend
+fastapi
+uvicorn
+python-multipart
+python-dotenv
+pydantic
+
+# Azure Speech (for audio transcription)
+azure-cognitiveservices-speech
+
+# PyTorch — DO NOT install via this file
+# Install manually AFTER pip install -r requirements.txt using:
+# Python 3.11 + CUDA 12.1 (RTX 30/40 series):
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# Python 3.11 + CUDA 11.8 (older GPU):
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# CPU only (no GPU):
+#   pip install torch torchvision torchaudio
