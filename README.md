@@ -245,9 +245,9 @@ G:\My Drive\Scam_Source
 
 | Metric | Normal | Scam | Overall |
 |---|---|---|---|
-| Precision | 0.9714 | 0.9714 | — |
-| Recall | 0.9600 | 1.0000 | — |
-| F1-Score | 0.9657 | 0.9855 | — |
+| Precision | 1.0000 | 0.9730 | — |
+| Recall | 0.9444 | 1.0000 | — |
+| F1-Score | 0.9714 | 0.9863 | — |
 | **Accuracy** | | | **98.15%** |
 
 ### XLM-RoBERTa (Transformer)
@@ -264,12 +264,12 @@ G:\My Drive\Scam_Source
 | Metric | TF-IDF + LR | XLM-RoBERTa |
 |---|---|---|
 | Accuracy | 98.15% | 97.97% |
-| Scam Precision | 0.9714 | 0.9884 |
+| Scam Precision | 0.9730 | 0.9884 |
 | Scam Recall | 1.0000 | 0.9835 |
-| Scam F1 | 0.9855 | 0.9859 |
-| Normal Precision | 0.9714 | 0.9571 |
-| Normal Recall | 0.9600 | 0.9696 |
-| Normal F1 | 0.9657 | 0.9633 |
+| Scam F1 | 0.9863 | 0.9859 |
+| Normal Precision | 1.0000 | 0.9571 |
+| Normal Recall | 0.9444 | 0.9696 |
+| Normal F1 | 0.9714 | 0.9633 |
 
 > Results from Phase 2 final models trained on 270-sample dataset.  
 > XLM confusion matrix: 223 TN, 596 TP, 7 FP, 10 FN (836 validation segments).
