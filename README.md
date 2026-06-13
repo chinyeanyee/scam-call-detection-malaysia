@@ -52,7 +52,6 @@ brew install ffmpeg
 
 If `winget` is not available on Windows, download manually from https://ffmpeg.org/download.html and add the `bin` folder to your system PATH.
 
-
 ### Step 2 — Update config.py
 Change `BASE_PATH` to match your Google Drive path:
 ```python
@@ -242,12 +241,38 @@ G:\My Drive\Scam_Source
 
 ## Model Results
 
+### TF-IDF + Logistic Regression (Baseline)
+
+| Metric | Normal | Scam | Overall |
+|---|---|---|---|
+| Precision | 0.9714 | 0.9714 | — |
+| Recall | 0.9600 | 1.0000 | — |
+| F1-Score | 0.9657 | 0.9855 | — |
+| **Accuracy** | | | **98.15%** |
+
+### XLM-RoBERTa (Transformer)
+
+| Metric | Normal | Scam | Overall |
+|---|---|---|---|
+| Precision | 0.9571 | 0.9884 | — |
+| Recall | 0.9696 | 0.9835 | — |
+| F1-Score | 0.9633 | 0.9859 | — |
+| **Accuracy** | | | **97.97%** |
+
+### Comparison Summary
+
 | Metric | TF-IDF + LR | XLM-RoBERTa |
 |---|---|---|
 | Accuracy | 98.15% | 97.97% |
 | Scam Precision | 0.9714 | 0.9884 |
 | Scam Recall | 1.0000 | 0.9835 |
 | Scam F1 | 0.9855 | 0.9859 |
+| Normal Precision | 0.9714 | 0.9571 |
+| Normal Recall | 0.9600 | 0.9696 |
+| Normal F1 | 0.9657 | 0.9633 |
+
+> Results from Phase 2 final models trained on 270-sample dataset.  
+> XLM confusion matrix: 223 TN, 596 TP, 7 FP, 10 FN (836 validation segments).
 
 ---
 
