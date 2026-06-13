@@ -266,3 +266,15 @@ if __name__ == "__main__":
     joblib.dump(vectorizer, os.path.join(SAVED_MODELS_FOLDER, 'tfidf_vectorizer.pkl'))
     print(f"\n✅ Model saved to: {SAVED_MODELS_FOLDER}")
     print("➡️  Next step: run 06_xlm_roberta_model.py")
+
+    # Save classification report to file
+    report = classification_report(
+        y_test, y_pred,
+        target_names=['Normal', 'Scam'],
+        digits=4
+    )
+    report_path = os.path.join(SAVED_MODELS_FOLDER, 'tfidf_classification_report.txt')
+    with open(report_path, 'w') as f:
+        f.write(f"Overall Accuracy: {accuracy_score(y_test, y_pred):.4f}\n\n")
+        f.write(report)
+    print(f"✅ Classification report saved: {report_path}")

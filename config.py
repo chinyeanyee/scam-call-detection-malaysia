@@ -31,4 +31,4 @@ XLM_MAX_LEN    = 128
 XLM_BATCH_SIZE = 8
 XLM_EPOCHS       = 3
 XLM_WEIGHT_DECAY = 0.05
-XLM_LR           = 2e-5
+XLM_LR           = 1e-5

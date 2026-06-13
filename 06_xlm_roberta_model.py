@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import GroupShuffleSplit
 from sklearn.utils.class_weight import compute_class_weight
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from datasets import Dataset
 from transformers import (AutoTokenizer,
                           AutoModelForSequenceClassification,
@@ -232,6 +232,19 @@ def evaluate_xlm(trainer, val_ds, val_df):
         digits=4
     ))
 
+
+    # ← ADD HERE, still inside evaluate_xlm()
+    report = classification_report(
+        y_true, y_pred,
+        target_names=['Normal', 'Scam'],
+        digits=4
+    )
+    report_path = os.path.join(SAVED_MODELS_FOLDER, 'xlm_classification_report.txt')
+    with open(report_path, 'w') as f:
+        f.write(f"Overall Accuracy: {accuracy_score(y_true, y_pred):.4f}\n\n")
+        f.write(report)
+    print(f"✅ Classification report saved: {report_path}")
+
     # Confusion matrix
     cm = confusion_matrix(y_true, y_pred)
     plt.figure(figsize=(6, 5))
@@ -295,3 +308,4 @@ if __name__ == "__main__":
     tokenizer.save_pretrained(MODEL_SAVE_PATH)
     print(f"\n✅ Model saved to: {MODEL_SAVE_PATH}")
     print("➡️  Next step: run 05_shap_xlm.py")
+
