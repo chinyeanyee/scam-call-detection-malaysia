@@ -281,3 +281,4 @@ G:\My Drive\Scam_Source
 2. Terminal 1: `uvicorn api:app --reload`
 3. Terminal 2: `ngrok http 8000`
 4. Open Lovable dashboard URL in browser
+https://scam-detection-malaysia.lovable.app

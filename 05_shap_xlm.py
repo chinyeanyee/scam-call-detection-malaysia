@@ -1,273 +1,509 @@
-# ==============================================
-# 05_shap_xlm.py
-# SHAP explainability for XLM-RoBERTa
-# Uses REAL test samples — not hardcoded text
-# Run AFTER 06_xlm_roberta_model.py
-# ==============================================
-
 import os
 import torch
 import shap
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
 from sklearn.model_selection import GroupShuffleSplit
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-from config import MASTER_CSV, SAVED_MODELS_FOLDER, RANDOM_SEED, XLM_MAX_LEN
+from transformers import (
+    AutoTokenizer,
+    AutoModelForSequenceClassification
+)
 
-MODEL_PATH = os.path.join(SAVED_MODELS_FOLDER, "xlm_roberta_scam")
+from config import (
+    MASTER_CSV,
+    SAVED_MODELS_FOLDER,
+    RANDOM_SEED,
+    TEST_SIZE,
+    XLM_MAX_LEN
+)
+
+MODEL_PATH = os.path.join(
+    SAVED_MODELS_FOLDER,
+    "xlm_roberta_scam"
+)
+
+def segment_text(text, tokenizer, max_len=50, overlap=10):
+
+    if not isinstance(text, str) or not text.strip():
+        return []
+
+    tokens = tokenizer.encode(
+        text,
+        add_special_tokens=False
+    )
+
+    if len(tokens) <= max_len:
+        return [tokenizer.decode(tokens)]
+
+    segments = []
+
+    step = max_len - overlap
+
+    for i in range(0, len(tokens), step):
+
+        chunk = tokenizer.decode(tokens[i:i+max_len])
+
+        segments.append(chunk)
+
+        if i + max_len >= len(tokens):
+            break
+
+    return segments
 
 # ==============================================
-# STEP 1: LOAD MODEL
+# STEP 2
+# Load trained XLM-RoBERTa model
 # ==============================================
 
 def load_model():
-    print("Loading model...")
+
+    print("=" * 60)
+    print("Loading trained XLM-RoBERTa model...")
+    print("=" * 60)
+
     tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-    model     = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH)
+
+    model = AutoModelForSequenceClassification.from_pretrained(
+        MODEL_PATH
+    )
+
     model.eval()
-    print("✅ Model loaded")
+
+    print("✅ Model loaded successfully.")
+
     return tokenizer, model
 
-
 # ==============================================
-# STEP 2: GET REAL TEST SAMPLES
-# Uses same leakage-free split as training
-# Picks clearly classified samples
+# STEP 3
+# Prediction function for SHAP
 # ==============================================
 
-def get_test_samples():
-    df = pd.read_csv(MASTER_CSV)
+def make_predict_function(tokenizer, model):
 
-    gss = GroupShuffleSplit(n_splits=1, test_size=0.2,
-                             random_state=RANDOM_SEED)
-    _, val_idx = next(gss.split(df, groups=df['source_file']))
-    val_df     = df.iloc[val_idx].reset_index(drop=True)
+    def predict(texts):
 
-    tokenizer, model = load_model()
-    predict_fn       = make_predict_fn(tokenizer, model)
+        # Ensure input is always a list of strings
+        texts = [str(t) for t in texts]
 
-    scam_samples   = val_df[
-        (val_df['label'] == 1) &
-        (val_df['content'].str.split().str.len() > 150)
-    ]['content'].tolist()
-
-    normal_samples = val_df[
-        (val_df['label'] == 0) &
-        (val_df['content'].str.split().str.len() > 100)
-    ]['content'].tolist()
-
-    # Scan ALL windows and pick highest scam probability window
-    best_scam_text  = None
-    best_scam_score = 0
-
-    for text in scam_samples:
-        words     = text.split()
-        step      = 50
-        window    = 100
-
-        for start in range(0, max(1, len(words) - window), step):
-            chunk = ' '.join(words[start:start + window])
-            prob  = predict_fn([chunk])[0][1]
-            if prob > best_scam_score:
-                best_scam_score = prob
-                best_scam_text  = chunk
-
-    # Find most confident normal prediction
-    best_normal_text  = None
-    best_normal_score = 1
-
-    for text in normal_samples:
-        truncated = ' '.join(text.split()[:100])
-        prob      = predict_fn([truncated])[0][1]
-        if prob < best_normal_score:
-            best_normal_score = prob
-            best_normal_text  = truncated
-
-    print(f"\nBest scam window   — P(Scam): {best_scam_score:.4f}")
-    print(f"Best normal sample — P(Scam): {best_normal_score:.4f}")
-    print(f"\nScam window (first 150 chars)  : {best_scam_text[:150]}")
-    print(f"Normal text (first 150 chars)  : {best_normal_text[:150]}")
-
-    return best_scam_text, best_normal_text, tokenizer, model
-    df = pd.read_csv(MASTER_CSV)
-
-    gss = GroupShuffleSplit(n_splits=1, test_size=0.2,
-                             random_state=RANDOM_SEED)
-    _, val_idx = next(gss.split(df, groups=df['source_file']))
-    val_df     = df.iloc[val_idx].reset_index(drop=True)
-
-    tokenizer, model = load_model()
-    predict_fn       = make_predict_fn(tokenizer, model)
-
-    # Only consider samples with enough words for meaningful SHAP
-    scam_samples   = val_df[
-        (val_df['label'] == 1) &
-        (val_df['content'].str.split().str.len() > 100)
-    ]['content'].tolist()
-
-    normal_samples = val_df[
-        (val_df['label'] == 0) &
-        (val_df['content'].str.split().str.len() > 100)
-    ]['content'].tolist()
-
-    # Find most confident scam prediction
-    best_scam_text  = None
-    best_scam_score = 0
-
-    for text in scam_samples:
-        # Use middle 100 words — skip intro and outro
-        words     = text.split()
-        mid_start = max(0, len(words)//3)
-        truncated = ' '.join(words[mid_start:mid_start+100])
-        prob      = predict_fn([truncated])[0][1]
-        if prob > best_scam_score:
-            best_scam_score = prob
-            best_scam_text  = truncated
-
-    # Find most confident normal prediction
-    best_normal_text  = None
-    best_normal_score = 1
-
-    for text in normal_samples:
-        truncated = ' '.join(text.split()[:100])
-        prob      = predict_fn([truncated])[0][1]
-        if prob < best_normal_score:
-            best_normal_score = prob
-            best_normal_text  = truncated
-
-    print(f"\nBest scam sample   — P(Scam): {best_scam_score:.4f}")
-    print(f"Best normal sample — P(Scam): {best_normal_score:.4f}")
-    print(f"\nScam text (first 100 chars)  : {best_scam_text[:100]}...")
-    print(f"Normal text (first 100 chars): {best_normal_text[:100]}...")
-
-    return best_scam_text, best_normal_text, tokenizer, model
-# ==============================================
-# STEP 3: PREDICTION FUNCTION FOR SHAP
-# ==============================================
-
-def make_predict_fn(tokenizer, model):
-    def predict_proba(texts):
-        texts  = [str(t) for t in texts]
-        inputs = tokenizer(
+        # Tokenize input
+        encoded = tokenizer(
             texts,
-            padding        = True,
-            truncation     = True,
-            max_length     = XLM_MAX_LEN,
-            return_tensors = "pt"
+            padding=True,
+            truncation=True,
+            max_length=XLM_MAX_LEN,
+            return_tensors="pt"
         )
+
+        # Model inference
         with torch.no_grad():
-            outputs = model(**inputs)
-            probs   = torch.softmax(outputs.logits, dim=1)
-        return probs.cpu().numpy()
-    return predict_proba
+            outputs = model(**encoded)
+            probabilities = torch.softmax(
+                outputs.logits,
+                dim=1
+            )
+
+        return probabilities.cpu().numpy()
+
+    return predict
+
+# ==============================================
+# STEP 4
+# Prepare validation segments
+# ==============================================
+
+def prepare_validation_segments(tokenizer):
+
+    print("=" * 60)
+    print("Preparing validation segments...")
+    print("=" * 60)
+
+    # Load dataset
+    df = pd.read_csv(MASTER_CSV)
+
+    # Recreate the SAME transcript split
+    splitter = GroupShuffleSplit(
+        n_splits=1,
+        test_size=TEST_SIZE,
+        random_state=RANDOM_SEED
+    )
+
+    _, val_idx = next(
+        splitter.split(
+            df,
+            groups=df["source_file"]
+        )
+    )
+
+    val_df = df.iloc[val_idx].reset_index(drop=True)
+
+    print(f"Validation transcripts : {len(val_df)}")
+
+    segments = []
+
+    # Segment every validation transcript
+    for _, row in val_df.iterrows():
+
+        chunk_list = segment_text(
+            row["content"],
+            tokenizer
+        )
+
+        for chunk in chunk_list:
+
+            segments.append({
+
+                "text": chunk,
+
+                "label": row["label"],
+
+                "source_file": row["source_file"]
+
+            })
+
+    segment_df = pd.DataFrame(segments)
+
+    print(f"Validation segments : {len(segment_df)}")
+
+    return segment_df
+
 
 
 # ==============================================
-# STEP 4: RUN SHAP + GENERATE WATERFALL PLOTS
+# STEP 5
+# Select representative validation segments
 # ==============================================
 
-def run_shap_analysis(tokenizer, model, scam_text, normal_text):
-    predict_fn = make_predict_fn(tokenizer, model)
-    masker     = shap.maskers.Text(tokenizer=r"\W+")
-    explainer  = shap.Explainer(predict_fn, masker)
 
-    texts  = [scam_text, normal_text]
-    labels = ["SCAM", "NORMAL"]
+# ==============================================
+# Scam keyword scoring
+# ==============================================
 
-    # Print probabilities
-    probs = predict_fn(texts)
-    print("\n" + "="*50)
-    print("MODEL PREDICTIONS")
-    print("="*50)
-    for i, (label, p) in enumerate(zip(labels, probs)):
-        print(f"{label}")
-        print(f"  P(Normal) = {p[0]:.4f}")
-        print(f"  P(Scam)   = {p[1]:.4f}")
-        print()
+SCAM_KEYWORDS = [
+    "akaun",
+    "bank",
+    "duit",
+    "wang",
+    "polis",
+    "mahkamah",
+    "otp",
+    "tac",
+    "transfer",
+    "bayar",
+    "pin",
+    "kad",
+    "pengenalan",
+    "ic",
+    "siasatan",
+    "bekukan",
+    "transaksi"
+]
 
-    # Compute SHAP values
-    print("Computing SHAP values (this may take a few minutes)...")
+def keyword_score(text):
+
+    text = str(text).lower()
+
+    score = 0
+
+    for keyword in SCAM_KEYWORDS:
+        if keyword in text:
+            score += 1
+
+    return score
+
+
+
+
+
+
+def select_representative_segments(segment_df,
+                                   tokenizer,
+                                   model):
+
+    print("=" * 60)
+    print("Selecting representative validation segments...")
+    print("=" * 60)
+
+    predict = make_predict_function(
+        tokenizer,
+        model
+    )
+
+    
+    probabilities = []
+    predictions = []
+
+    # Predict all validation segments at once
+    texts = segment_df["text"].tolist()
+
+    all_probs = predict(texts)
+
+    for prob in all_probs:
+
+     probabilities.append(prob[1])      # Scam probability
+
+     predictions.append(
+        int(prob[1] >= 0.5)
+    )    
+
+    segment_df = segment_df.copy()
+
+    segment_df["prob_scam"] = probabilities
+    segment_df["prediction"] = predictions
+
+    # Keep only correctly classified samples
+    correct_df = segment_df[
+        segment_df["label"] ==
+        segment_df["prediction"]
+    ].copy()
+
+    print(f"Correctly classified segments : {len(correct_df)}")
+    
+    # Calculate scam keyword score
+    correct_df["keyword_score"] = correct_df["text"].apply(keyword_score)
+
+    #
+    # Representative Scam
+    #
+
+    scam_df = correct_df[
+        (correct_df["label"] == 1) &
+        (correct_df["prob_scam"] >= 0.80) 
+    ]
+
+    # Show the best scam candidates
+    print("\nTop 10 Scam Candidates")
+    print("=" * 60)
+    
+    top_candidates = scam_df.sort_values(
+    by=["keyword_score", "prob_scam"],
+    ascending=[False, False]
+    ).head(10)
+
+    print(
+    top_candidates[
+        ["keyword_score", "prob_scam", "text"]
+    ].to_string(index=True)
+    )
+
+
+    #
+    # Representative Normal
+    #
+
+    normal_df = correct_df[
+        (correct_df["label"] == 0) &
+        (correct_df["prob_scam"] <= 0.15)
+    ]
+
+    if scam_df.empty:
+        raise ValueError(
+            "No representative scam segment found."
+        )
+
+    if normal_df.empty:
+        raise ValueError(
+            "No representative normal segment found."
+        )
+    selected_index = 687     # <-- change this after viewing the Top 10
+
+    scam_segment = scam_df.loc[selected_index]
+
+    normal_segment = normal_df.sort_values(
+        "prob_scam",
+        ascending=True
+    ).iloc[0]
+
+    print("\nRepresentative Scam Segment")
+    print("----------------------------")
+    print(f"P(Scam) : {scam_segment['prob_scam']:.4f}")
+    print(scam_segment["text"][:250])
+
+    print("\nRepresentative Normal Segment")
+    print("-----------------------------")
+    print(f"P(Scam) : {normal_segment['prob_scam']:.4f}")
+    print(normal_segment["text"][:250])
+
+    return (
+        scam_segment,
+        normal_segment
+    )
+
+# ==============================================
+# STEP 6
+# Run SHAP Explainability
+# ==============================================
+
+def run_shap(tokenizer,
+             model,
+             scam_segment,
+             normal_segment):
+
+    print("=" * 60)
+    print("Running SHAP Explainability...")
+    print("=" * 60)
+
+    predict = make_predict_function(
+        tokenizer,
+        model
+    )
+
+    # Use the SAME tokenizer as XLM-RoBERTa
+    masker = shap.maskers.Text(tokenizer)
+
+    explainer = shap.Explainer(
+        predict,
+        masker
+    )
+
+    texts = [
+
+        scam_segment["text"],
+
+        normal_segment["text"]
+
+    ]
+
+    print("\nRepresentative Scam Segment")
+    print(scam_segment["text"])
+
+    print("\nRepresentative Normal Segment")
+    print(normal_segment["text"])
+    
+    print("Computing SHAP values...")
+    print("This may take several minutes.\n")
+
     shap_values = explainer(texts)
 
-    # Waterfall for SCAM text
-    plt.figure(figsize=(12, 7))
-    shap.plots.waterfall(
-        shap_values[0, :, 1],
-        max_display=15,
-        show=False
+    probabilities = predict(texts)
+
+    return (
+        shap_values,
+        probabilities
     )
-    plt.title("SHAP Explanation — SCAM Text (XLM-RoBERTa)")
-    plt.tight_layout()
-    plt.savefig(os.path.join(SAVED_MODELS_FOLDER, 'xlm_shap_scam.png'),
-                dpi=150, bbox_inches='tight')
-    plt.show()
 
-    # Waterfall for NORMAL text
-    plt.figure(figsize=(12, 7))
+# ==============================================
+# STEP 7
+# Save SHAP Waterfall Plots
+# ==============================================
+
+def save_waterfall_plots(shap_values):
+
+    print("Saving waterfall plots...")
+
+    #
+    # Scam
+    #
+
+    plt.figure(figsize=(12,7))
+
     shap.plots.waterfall(
-        shap_values[1, :, 1],
+
+        shap_values[0,:,1],
+
         max_display=15,
+
         show=False
+
     )
-    plt.title("SHAP Explanation — NORMAL Text (XLM-RoBERTa)")
+
     plt.tight_layout()
-    plt.savefig(os.path.join(SAVED_MODELS_FOLDER, 'xlm_shap_normal.png'),
-                dpi=150, bbox_inches='tight')
-    plt.show()
 
-    print("\n✅ SHAP waterfall plots saved")
-    return shap_values, probs
+    plt.savefig(
 
+        os.path.join(
 
-# ==============================================
-# STEP 5: HUMAN-READABLE EXPLANATION
-# ==============================================
+            SAVED_MODELS_FOLDER,
 
-def explain_prediction(text, prob_scam):
-    if prob_scam >= 0.8:
-        verdict = "HIGH RISK — Likely Scam"
-        reason  = ("Contains authority-related terms, urgency markers, or "
-                   "financial directives commonly found in scam calls.")
-    elif prob_scam >= 0.5:
-        verdict = "MEDIUM RISK — Suspicious"
-        reason  = ("Some patterns weakly resemble scam language. "
-                   "Proceed with caution.")
-    else:
-        verdict = "LOW RISK — Likely Normal"
-        reason  = ("Contains everyday conversational language without "
-                   "scam indicators.")
+            "xlm_shap_scam_waterfall.png"
 
-    print(f"  Verdict : {verdict}")
-    print(f"  Reason  : {reason}")
-    print(f"  P(Scam) : {prob_scam:.4f}")
+        ),
 
+        dpi=300,
 
-# ==============================================
-# MAIN
-# ==============================================
+        bbox_inches="tight"
+
+    )
+
+    plt.close()
+
+    #
+    # Normal
+    #
+
+    plt.figure(figsize=(12,7))
+
+    shap.plots.waterfall(
+
+        shap_values[1,:,1],
+
+        max_display=15,
+
+        show=False
+
+    )
+
+    plt.tight_layout()
+
+    plt.savefig(
+
+        os.path.join(
+
+            SAVED_MODELS_FOLDER,
+
+            "xlm_shap_normal_waterfall.png"
+
+        ),
+
+        dpi=300,
+
+        bbox_inches="tight"
+
+    )
+
+    plt.close()
+
+    print("✅ Waterfall plots saved.")
 
 if __name__ == "__main__":
-    print("="*50)
-    print("Loading best scam and normal samples")
-    print("="*50)
-    scam_text, normal_text, tokenizer, model = get_test_samples()
 
-    print("\n" + "="*50)
-    print("Running SHAP analysis")
-    print("="*50)
-    shap_values, probs = run_shap_analysis(
-        tokenizer, model, scam_text, normal_text
+    print("=" * 60)
+    print("XLM-RoBERTa SHAP Explainability")
+    print("=" * 60)
+
+    # Load model
+    tokenizer, model = load_model()
+
+    # Prepare validation segments
+    segment_df = prepare_validation_segments(tokenizer)
+
+    # Select representative samples
+    scam_segment, normal_segment = select_representative_segments(
+        segment_df,
+        tokenizer,
+        model
     )
 
-    print("\n" + "="*50)
-    print("HUMAN-READABLE EXPLANATIONS")
-    print("="*50)
-    print("SCAM sample:")
-    explain_prediction(scam_text, probs[0][1])
-    print("\nNORMAL sample:")
-    explain_prediction(normal_text, probs[1][1])
+    # Run SHAP
+    shap_values, probabilities = run_shap(
+        tokenizer,
+        model,
+        scam_segment,
+        normal_segment
+    )
 
-    print("\n✅ SHAP analysis complete")
+    # Save figures
+    save_waterfall_plots(shap_values)
+
+    print("\n" + "=" * 60)
+    print("SHAP probabilities")
+    print("=" * 60)
+
+    print(f"Scam segment   : {probabilities[0][1]:.4f}")
+    print(f"Normal segment : {probabilities[1][1]:.4f}")
+
+    print("\n✅ SHAP analysis complete.")
+    print(f"Results saved to:\n{SAVED_MODELS_FOLDER}")
     print("➡️  Next step: run 07_dashboard.py")
+
