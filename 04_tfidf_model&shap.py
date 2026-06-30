@@ -203,34 +203,165 @@ def run_shap(model, vectorizer, X_train_tfidf, X_test_tfidf, X_test, y_test, y_p
                 dpi=150, bbox_inches='tight')
     plt.show()
 
-    # --- Local waterfall: one real SCAM sample ---
-    scam_indices = [i for i, (yt, yp) in enumerate(zip(y_test, y_pred))
-                    if yt == 1]
-    if scam_indices:
-        idx = scam_indices[0]
-        plt.figure(figsize=(12, 6))
-        shap.plots.waterfall(shap_values[idx], max_display=15, show=False)
-        plt.title(f"Local SHAP — Scam Sample (Test idx {idx})")
-        plt.tight_layout()
-        plt.savefig(os.path.join(SAVED_MODELS_FOLDER, 'tfidf_shap_scam.png'),
-                    dpi=150, bbox_inches='tight')
-        plt.show()
-        print(f"\nScam sample text (first 200 chars):\n{X_test.iloc[idx][:200]}")
+    
+        # ===========================================
+# Find representative scam sample
+# ===========================================
 
-    # --- Local waterfall: one real NORMAL sample ---
-    normal_indices = [i for i, (yt, yp) in enumerate(zip(y_test, y_pred))
-                      if yt == 0]
-    if normal_indices:
-        idx = normal_indices[0]
-        plt.figure(figsize=(12, 6))
-        shap.plots.waterfall(shap_values[idx], max_display=15, show=False)
-        plt.title(f"Local SHAP — Normal Sample (Test idx {idx})")
-        plt.tight_layout()
-        plt.savefig(os.path.join(SAVED_MODELS_FOLDER, 'tfidf_shap_normal.png'),
-                    dpi=150, bbox_inches='tight')
-        plt.show()
-        print(f"\nNormal sample text (first 200 chars):\n{X_test.iloc[idx][:200]}")
+    SCAM_KEYWORDS = [
+            "akaun",
+            "bank",
+            "polis",
+            "duit",
+            "wang",
+            "otp",
+            "tac",
+            "sprm",
+            "mahkamah",
+            "bekukan",
+            "macau"
+        ]
 
+    
+    candidates = []
+
+    for i, (yt, yp) in enumerate(zip(y_test, y_pred)):
+
+        if yt != 1 or yp != 1:
+            continue
+
+        text = X_test.iloc[i]
+
+        score = sum(
+            keyword in text.lower()
+            for keyword in SCAM_KEYWORDS
+        )
+
+        candidates.append({
+
+            "index": i,
+
+            "score": score,
+
+            "prob": model.predict_proba(
+                X_test_tfidf[i]
+            )[0][1],
+
+            "text": text
+
+        })
+    
+
+        # ===========================================
+    # Step 2: SORT THE CANDIDATES
+    # ===========================================
+
+    candidates = sorted(
+
+        candidates,
+
+        key=lambda x: (
+            x["score"],
+            x["prob"]
+        ),
+
+        reverse=True
+    )
+
+    
+        # ===========================================
+    # Step 3: PRINT TOP 10
+    # ===========================================
+
+    print("\nTop 10 Representative Scam Candidates")
+    print("=" * 80)
+
+    for c in candidates[:10]:
+
+        print(f"Index : {c['index']}")
+        print(f"Keyword Score : {c['score']}")
+        print(f"P(Scam) : {c['prob']:.4f}")
+        print("-" * 80)
+        print(c["text"])
+        print("=" * 80)
+
+    # ===========================================
+    # Step 4: CHOOSE ONE
+    # ===========================================
+
+    idx = candidates[3]["index"]      # temporary
+    
+    
+        
+        # ===========================================
+    # Print the selected representative sample
+    # ===========================================
+    print("\nRepresentative Scam Sample")
+    print("-" * 60)
+    print("\nRepresentative Scam Transcript")
+    print("=" * 80)
+    print(X_test.iloc[idx])
+    print("=" * 80)
+
+    plt.figure(figsize=(12, 6))
+    shap.plots.waterfall(
+        shap_values[idx],
+        max_display=15,
+        show=False
+    )
+    plt.title(f"Local SHAP — Scam Sample (Test idx {idx})")
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(
+            SAVED_MODELS_FOLDER,
+            'tfidf_shap_scam.png'
+        ),
+        dpi=150,
+        bbox_inches='tight'
+    )
+    plt.show()
+    
+        # ===========================================
+    # Representative Normal Sample
+    # ===========================================
+
+    normal_indices = [
+        i for i, (yt, yp) in enumerate(zip(y_test, y_pred))
+        if yt == 0 and yp == 0
+    ]
+
+    # Choose the first correctly classified normal sample
+    normal_idx = normal_indices[0]
+
+    print("\nRepresentative Normal Transcript")
+    print("=" * 80)
+    print(X_test.iloc[normal_idx])
+    print("=" * 80)
+
+    plt.figure(figsize=(12, 6))
+
+    shap.plots.waterfall(
+        shap_values[normal_idx],
+        max_display=15,
+        show=False
+    )
+
+    plt.title(f"Local SHAP — Normal Sample (Test idx {normal_idx})")
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(
+            SAVED_MODELS_FOLDER,
+            "tfidf_shap_normal.png"
+        ),
+        dpi=150,
+        bbox_inches="tight"
+    )
+
+    plt.show()
+
+# ==============================================
     print("\n✅ All SHAP plots saved")
 
 

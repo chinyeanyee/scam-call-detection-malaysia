@@ -307,5 +307,5 @@ if __name__ == "__main__":
     trainer.save_model(MODEL_SAVE_PATH)
     tokenizer.save_pretrained(MODEL_SAVE_PATH)
     print(f"\n✅ Model saved to: {MODEL_SAVE_PATH}")
-    print("➡️  Next step: run 05_shap_xlm.py")
+    print("➡️  Next step: run 06_shap_xlm.py")
 
